@@ -1,0 +1,40 @@
+name: Sync Branches
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        required: true
+        type: string
+      sync-branch:
+        required: false
+        type: string
+        default: 'develop'
+    secrets:
+      GH_TOKEN:
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ inputs.target-branch }}
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Push changes to sync branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git fetch origin ${{ inputs.sync-branch }} 2>/dev/null; then
+            # KORRIGIERT: --force hinzugefügt, um den non-fast-forward Fehler zu überschreiben
+            git push origin ${{ inputs.target-branch }}:${{ inputs.sync-branch }} --force
+          else
+            echo "Sync-Branch '${{ inputs.sync-branch }}' existiert nicht auf Remote."
+          fi

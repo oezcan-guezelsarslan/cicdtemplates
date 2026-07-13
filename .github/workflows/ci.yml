@@ -1,0 +1,119 @@
+name: UI Tag Release and Sync Template
+
+on:
+  workflow_call:
+    inputs:
+      sync-branch:
+        required: false
+        type: string
+        default: 'develop'
+    secrets:
+      GH_TOKEN:
+        required: false
+
+jobs:
+  cibuild:
+    uses: "oezcan-guezelsarslan/cicdtemplates/.github/workflows/tag.yml@main"
+    permissions:
+      contents: read
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  check-runnings:
+    needs: [cibuild]
+    runs-on: ubuntu-latest
+    outputs:
+      docker_file_exists: ${{ steps.docker_file_exists.outputs.docker_file_exists }}
+      helm_chart_file_exists: ${{ steps.helm_chart_file_exists.outputs.helm_chart_file_exists }}
+      sync_branch_exists: ${{ steps.sync_branch_exists.outputs.sync_branch_exists }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0 # Fetches all history and branches so we can check existence
+
+      - name: Check for Dockerfile
+        id: docker_file_exists
+        run: |
+          if [ -f "Dockerfile" ]; then
+            echo "docker_file_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker_file_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for Helm Chart
+        id: helm_chart_file_exists
+        run: |
+          if [ -f "Chart.yaml" ]; then
+            echo "helm_chart_file_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "helm_chart_file_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if sync branch exists
+        id: sync_branch_exists
+        run: |
+          TARGET_BRANCH="${{ inputs.sync-branch }}"
+          # Checks both local tracking and remote branches for the specified name
+          if git rev-parse --verify --quiet "origin/$TARGET_BRANCH" > /dev/null || git rev-parse --verify --quiet "$TARGET_BRANCH" > /dev/null; then
+            echo "sync_branch_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "sync_branch_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  helm:
+    needs: [cibuild, check-runnings]
+    if: needs.check-runnings.outputs.helm_chart_file_exists == 'true'
+    uses: "oezcan-guezelsarslan/cicdtemplates/.github/workflows/helm.yml@main"
+    permissions:
+      contents: write
+    with:
+      target-branch: ${{ needs.cibuild.outputs.target-branch }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  docker:
+    needs: [cibuild, check-runnings]
+    if: needs.check-runnings.outputs.docker_file_exists == 'true'
+    uses: "oezcan-guezelsarslan/cicdtemplates/.github/workflows/docker.yml@main"
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    with:
+      target-branch: ${{ needs.cibuild.outputs.target-branch }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  documentation:
+    needs: [cibuild, helm, docker]
+    if: |
+      always() && 
+      (github.ref_type == 'tag') && 
+      (needs.cibuild.result == 'success') && 
+      (needs.helm.result == 'success' || needs.helm.result == 'skipped') && 
+      (needs.docker.result == 'success' || needs.docker.result == 'skipped')
+    uses: "oezcan-guezelsarslan/cicdtemplates/.github/workflows/documentation.yml@main"
+    permissions:
+      contents: write
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  sync:
+    needs: [cibuild, helm, docker, documentation, check-runnings]
+    if: |
+      always() &&
+      (needs.check-runnings.outputs.sync_branch_exists == 'true') &&
+      (needs.cibuild.result == 'success') &&
+      (needs.helm.result == 'success' || needs.helm.result == 'skipped') &&
+      (needs.docker.result == 'success' || needs.docker.result == 'skipped') &&
+      (needs.documentation.result == 'success' || needs.documentation.result == 'skipped')
+    uses: "oezcan-guezelsarslan/cicdtemplates/.github/workflows/sync.yml@main"
+    permissions:
+      contents: write
+    with:
+      target-branch: ${{ needs.cibuild.outputs.target-branch }}
+      sync-branch: ${{ inputs.sync-branch }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

@@ -1,0 +1,60 @@
+name: Tag Parse and Branch Detection
+
+on:
+  workflow_call:
+    outputs:
+      new_tag:
+        description: "Extracted Tag name"
+        value: ${{ jobs.detect.outputs.new_tag }}
+      new_version:
+        description: "The version without 'v'"
+        value: ${{ jobs.detect.outputs.new_version }}
+      target-branch:
+        description: "Resolved target branche"
+        value: ${{ jobs.detect.outputs.target-branch }}
+    secrets:
+      GH_TOKEN:
+        required: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      new_tag: ${{ steps.parse_tag.outputs.NEW_TAG }}
+      new_version: ${{ steps.parse_tag.outputs.NEW_VERSION }}
+      target-branch: ${{ steps.determine_branch.outputs.TARGET_BRANCH }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Parse UI Tag
+        id: parse_tag
+        run: |
+          NEW_TAG="${{ github.ref_name }}"
+          NEW_VERSION=$(echo "$NEW_TAG" | sed 's/^v//')
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Determine Target Branch
+        id: determine_branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if [[ "${{ github.ref_name }}" != v* ]]; then
+            TARGET_BRANCH="${{ github.ref_name }}"
+          else
+            git fetch --all --prune
+            TARGET_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v 'HEAD' | head -n 1 | sed 's|origin/||' | tr -d '[:space:]')
+          fi
+          
+          if [ -z "$TARGET_BRANCH" ]; then 
+            TARGET_BRANCH="main"
+          fi
+          
+          echo "TARGET_BRANCH=$TARGET_BRANCH" >> $GITHUB_OUTPUT

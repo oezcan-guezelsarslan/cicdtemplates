@@ -1,0 +1,83 @@
+name: Generate Documentation and Release
+
+on:
+  workflow_call:
+    secrets:
+      GH_TOKEN:
+        required: false
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    if: ${{ github.ref_type == 'tag' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Workspace and Versions
+        id: detect
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          NEW_TAG="${{ github.ref_name }}"
+          NEW_VERSION=$(echo "$NEW_TAG" | sed 's/^v//')
+          TARGET_BRANCH="main"
+          
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "TARGET_BRANCH=$TARGET_BRANCH" >> $GITHUB_ENV
+          
+          git fetch origin $TARGET_BRANCH
+          git checkout $TARGET_BRANCH
+
+      - name: Fetch central cliff.toml
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/oezcan-guezelsarslan/cicdtemplates/main/cliff.toml" -o cliff.toml
+        shell: bash
+
+      - name: Pre-update Tag for Git-Cliff
+        run: |
+          git tag -f ${{ env.NEW_TAG }}
+          git push origin ${{ env.NEW_TAG }} --force
+
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --tag ${{ env.NEW_TAG }}
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Commit and Push Changelog
+        run: |
+          git add CHANGELOG.md
+          
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update changelog for ${{ env.NEW_VERSION }} [skip ci]"
+            git push origin ${{ env.TARGET_BRANCH }}
+          else
+            echo "Keine Änderungen im Changelog vorhanden."
+          fi
+
+      - name: Final Tag Update
+        run: |
+          git tag -f ${{ env.NEW_TAG }}
+          git push origin ${{ env.NEW_TAG }} --force
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.NEW_TAG }}
+          body: ${{ steps.git-cliff.outputs.content }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}

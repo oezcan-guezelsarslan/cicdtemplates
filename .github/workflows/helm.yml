@@ -1,0 +1,50 @@
+name: Update Helm Chart
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        required: true
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: false
+
+jobs:
+  update-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: ${{ github.ref_type == 'tag' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ inputs.target-branch }}
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Detect Version from Tag or Context
+        id: version_check
+        run: |
+          NEW_TAG="${{ github.ref_name }}"
+          # Wenn es ein Tag ist (z.B. v1.2.3), das 'v' entfernen. Sonst den ref_name nutzen.
+          if [[ "$NEW_TAG" == v* ]]; then
+            echo "VERSION=$(echo "$NEW_TAG" | sed 's/^v//')" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=$NEW_TAG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Chart.yaml
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          sed -i "s/^version:.*/version: ${{ steps.version_check.outputs.VERSION }}/" Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version_check.outputs.VERSION }}\"/" Chart.yaml
+          
+          git add Chart.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update helm chart to ${{ steps.version_check.outputs.VERSION }} [skip ci]"
+            git push origin ${{ inputs.target-branch }}
+          fi

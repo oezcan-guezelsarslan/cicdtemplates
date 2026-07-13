@@ -1,0 +1,30 @@
+[changelog]
+header = """
+# Changelog for [{{ remote.github.repo }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }})\n
+"""
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {% if group == "Features" %}✨ {{ group | upper_first }}{% elif group == "Bug Fixes" %}🐛 {{ group | upper_first }}{% elif group == "Documentation" %}📝 {{ group | upper_first }}{% elif group == "Performance" %}⚡ {{ group | upper_first }}{% elif group == "Refactor" %}🔨 {{ group | upper_first }}{% else %}📦 {{ group | upper_first }}{% endif %}
+    {% for commit in commits %}
+        - {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message | upper_first }} - *{{ commit.committer.timestamp | date(format="%Y-%m-%d %H:%M:%S") }}* (by {{ commit.author.name }})\
+    {% endfor %}
+{% endfor %}\n
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^doc", group = "Documentation" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactor" },
+    { message = ".*", group = "Miscellaneous" },
+]
