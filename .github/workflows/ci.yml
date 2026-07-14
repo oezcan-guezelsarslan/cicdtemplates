@@ -3,6 +3,9 @@ name: UI Tag Release and Sync Template
 on:
   workflow_call:
     inputs:
+      target-branch:
+        required: false
+        type: string
       sync-branch:
         required: false
         type: string
