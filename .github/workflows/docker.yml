@@ -18,7 +18,6 @@ jobs:
       packages: write
       security-events: write
 
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7.0.0
@@ -36,7 +35,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # Dynamische Ermittlung des Image-Namens und des korrekten Tags
       - name: Set Image Name and Dynamic Tag
         run: |
           IMAGE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
@@ -49,9 +47,11 @@ jobs:
           fi
 
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "DOCKER_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+            CLEAN_TAG=$(echo "${{ github.ref_name }}" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')
+            echo "DOCKER_TAG=${CLEAN_TAG}" >> $GITHUB_ENV
           else
-            echo "DOCKER_TAG=${RESOLVED_BRANCH}" >> $GITHUB_ENV
+            CLEAN_BRANCH=$(echo "${RESOLVED_BRANCH}" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')
+            echo "DOCKER_TAG=${CLEAN_BRANCH}" >> $GITHUB_ENV
           fi
 
       - name: Build Docker Image locally
