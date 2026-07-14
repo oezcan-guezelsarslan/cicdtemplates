@@ -23,7 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.0
         with:
-          ref: ${{ inputs.target-branch }}
+          ref: ${{ inputs.target-branch || github.ref_name }}
           token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
@@ -42,12 +42,17 @@ jobs:
           IMAGE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE_ID=${IMAGE_ID}" >> $GITHUB_ENV
           
+          # Fallback check if inputs.target-branch is empty or null
+          RESOLVED_BRANCH="${{ inputs.target-branch }}"
+          if [ -z "$RESOLVED_BRANCH" ]; then
+            RESOLVED_BRANCH="${{ github.ref_name }}"
+          fi
+
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "DOCKER_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
           else
-            echo "DOCKER_TAG=${{ inputs.target-branch }}" >> $GITHUB_ENV
+            echo "DOCKER_TAG=${RESOLVED_BRANCH}" >> $GITHUB_ENV
           fi
-          echo "allo Welt"
 
       - name: Build Docker Image locally
         uses: docker/build-push-action@v7
@@ -60,7 +65,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.29.0 # Pinned to a stable version
         with:
           image-ref: ${{ env.IMAGE_ID }}:${{ env.DOCKER_TAG }}
           format: 'sarif'
