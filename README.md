@@ -1,3 +1,1 @@
 # cicdtemplates
-test
-tech talk
