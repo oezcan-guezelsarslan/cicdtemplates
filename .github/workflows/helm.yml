@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.target-branch }}
           token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
